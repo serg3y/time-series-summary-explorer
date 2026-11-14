@@ -1,0 +1,2045 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SummaryExplorer</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <style>
+        body { margin: 0; background: #141414; color: white; font-family: 'Segoe UI', sans-serif; overflow-x: hidden; }
+        #top-bar { padding: 15px 20px; background: #1e1e1e; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 1000; flex-wrap: wrap; }
+        body.page-overflow #top-bar { position: static; }
+        .field-controls { display: contents; }
+        .field-control { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+        .drag-handle { padding: 0 2px; border: 0; background: transparent; color: #aaa; font-size: 17px; line-height: 1; cursor: grab; }
+        .drag-handle:active { cursor: grabbing; }
+        .field-control.dragging { opacity: 0.45; }
+        .field-control.drag-target { outline: 1px dashed #aaa; outline-offset: 3px; }
+        .filter-settings-menu { display: none; position: fixed; min-width: 220px; padding: 6px 0; background: #333; border: 1px solid #555; border-radius: 4px; box-shadow: 0 8px 16px rgba(0,0,0,0.5); z-index: 2000; }
+        .filter-settings-menu.open { display: block; }
+        .filter-settings-menu label { display: flex; align-items: center; gap: 8px; padding: 8px 12px; color: white; cursor: pointer; font-size: 13px; white-space: nowrap; }
+        .filter-settings-menu input { width: 16px; height: 16px; }
+        .split-label { display: flex; align-items: center; gap: 3px; cursor: pointer; font-size: 12px; line-height: 1.2; }
+        .custom-dropdown { position: relative; display: inline-block; width: 152px; }
+        .dropbtn { background: #444; color: white; border: 1px solid #666; padding: 6px 10px; border-radius: 4px; width: 100%; text-align: left; cursor: pointer; font-size: 13px; line-height: 1.2; display: flex; justify-content: space-between; align-items: center; }
+        .dropbtn.filtered { border: 4px solid #007bff; }
+        .btn-label { display: flex; flex: 1 1 0; align-items: center; min-width: 0; overflow: hidden; white-space: nowrap; }
+        .field-name { min-width: 0; flex: 1 1 0; overflow: hidden; text-overflow: ellipsis; }
+        .field-count { flex: 0 0 auto; }
+        .dropdown-content { display: none; position: absolute; right: 0; background: #333; width: max-content; min-width: 188px; max-width: min(308px, calc(100vw - 24px)); box-sizing: border-box; box-shadow: 0 8px 16px rgba(0,0,0,0.5); z-index: 1001; border: 1px solid #555; border-radius: 4px; }
+        .dropdown-content.scrollable { max-height: min(70vh, 680px); overflow-y: auto; }
+        .split-label input, .dropdown-content input[type="checkbox"] { width: 20px; height: 20px; }
+        .dropdown-content label { color: white; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; gap: 16px; cursor: pointer; font-size: 13px; line-height: 1.35; }
+        .dropdown-content label[hidden] { display: none; }
+        .dropdown-content label span:first-child { display: flex; align-items: center; overflow-wrap: anywhere; }
+        .dropdown-content label input[type="checkbox"] { flex: 0 0 auto; }
+        .dropdown-content label:hover { background: #444; }
+        .count-badge { color: #aaa; font-size: 11px; }
+        .show { display: block; }
+        .all-btn { width: 100%; padding: 8px; background: #444; color: #ccc; border: none; border-bottom: 1px solid #555; cursor: pointer; font-size: 12px; text-align: left; }
+        .all-btn:hover { background: #666; color: white; }
+        #total-count { display: flex; flex: 1 1 auto; align-items: baseline; gap: 10px; margin-left: 18px; font-weight: bold; white-space: nowrap; }
+        #peak-count { font-weight: 400; }
+        #plot-heading { margin: 0; padding: 15px 0; color: white; font-size: 19.2px; font-weight: 400; line-height: 23px; text-align: center; cursor: default; }
+        #data-status { min-height: 18px; padding: 0 12px 8px; color: #aaa; text-align: center; font-size: 12px; }
+        #data-status:empty { display: none; }
+        #data-status.error { color: #ff8a80; }
+        #copy-status { position: fixed; right: 12px; bottom: 8px; z-index: 1500; color: #ccc; font-size: 11px; }
+        #copy-status:empty { display: none; }
+        #plot { width: 100vw; }
+        #plot.sticky-xaxis-active .xlines-above, #plot.sticky-xaxis-active .xaxislayer-above { visibility: hidden; }
+        #sticky-heatmap-xaxis { position: fixed; right: 0; bottom: 0; left: 0; height: 50px; z-index: 900; box-sizing: border-box; background: #141414; opacity: 0; visibility: hidden; pointer-events: none; }
+        #sticky-heatmap-xaxis.visible { opacity: 1; visibility: visible; }
+        #sticky-heatmap-xaxis .axis-track { position: absolute; top: 0; height: 100%; }
+        #sticky-heatmap-xaxis .axis-line { position: absolute; top: 0; left: 0; width: 100%; border-top: 1px solid white; }
+        #sticky-heatmap-xaxis .axis-tick { position: absolute; top: 0; height: 4px; border-left: 1px solid white; }
+        #sticky-heatmap-xaxis .axis-label { position: absolute; top: 6px; color: white; font-size: 11px; line-height: 12px; text-align: center; white-space: nowrap; }
+        #sticky-colorbar { position: fixed; top: 0; left: 0; width: 80px; height: 0; display: none; z-index: 900; pointer-events: none; }
+        #sticky-colorbar.visible { display: block; }
+        #sticky-colorbar-gradient { position: absolute; left: 0; top: 0; }
+        #sticky-colorbar-ticks { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+        #sticky-colorbar-ticks span { position: absolute; left: 26px; transform: translateY(-50%); color: white; font-size: 12px; line-height: 1; white-space: nowrap; }
+        #bar-plot { width: 100vw; height: 160px; }
+        #plot.empty-state { min-height: 160px; display: flex; align-items: center; justify-content: center; color: white; }
+        #plot.panning, #bar-plot.panning { cursor: grabbing; }
+        #drop-overlay { display: none; position: fixed; inset: 0; z-index: 2000; align-items: center; justify-content: center; background: rgba(10, 10, 10, 0.82); }
+        #drop-overlay.visible { display: flex; }
+        #busy-indicator { display: none; position: fixed; inset: 0; z-index: 1800; align-items: center; justify-content: center; pointer-events: none; }
+        #busy-indicator.visible { display: flex; }
+        #busy-indicator .spinner { width: 56px; height: 56px; border: 10px solid rgba(255,255,255,0.15); border-top-color: #8FBFDB; border-radius: 50%; animation: busy-spin 0.9s linear infinite; }
+        @keyframes busy-spin { to { transform: rotate(360deg); } }
+        @media (prefers-reduced-motion: reduce) { #busy-indicator .spinner { animation-duration: 3s; } }
+        #drop-message { padding: 48px; border: 3px dashed #aaa; border-radius: 16px; color: white; font-size: 24px; text-align: center; pointer-events: none; }
+        #menu-popup { display:none;position:absolute;right:0;top:calc(100% + 6px);width:190px;background:#333;border:1px solid #555;border-radius:4px;z-index:2000;box-shadow:0 8px 16px rgba(0,0,0,0.5); }
+        #menu-popup.context-positioned { position:fixed;right:auto;top:auto; }
+        #menu-popup.open { display:block; }
+        #menu-popup button { width:100%;background:none;border:0;color:white;padding:10px;text-align:left;cursor:pointer;font-size:13px; }
+        #menu-popup button:hover { background:#444; }
+        #tool-help { position: relative; flex: 0 0 auto; }
+        #tool-help summary { display: flex; width: 30px; height: 30px; box-sizing: border-box; align-items: center; justify-content: center; padding: 0; background: #333; border: 1px solid #555; border-radius: 50%; cursor: pointer; font-size: 15px; font-weight: 600; list-style: none; }
+        #tool-help summary::-webkit-details-marker { display: none; }
+        #tool-help-content { position: absolute; right: 0; top: calc(100% + 6px); z-index: 1100; width: min(340px, calc(100vw - 32px)); padding: 12px; background: #2b2b2b; border: 1px solid #555; border-radius: 4px; box-shadow: 0 8px 16px rgba(0,0,0,0.5); color: #ddd; font-size: 13px; line-height: 1.45; }
+        #tool-help-content p { margin: 0 0 8px; }
+        #tool-help-content p:last-child { margin-bottom: 0; }
+        #row-height-dialog, #max-count-dialog, #time-range-dialog { box-sizing:border-box; background:#2b2b2b; color:white; border:1px solid #666; border-radius:8px; padding:20px; box-shadow:0 12px 32px rgba(0,0,0,0.6); }
+        #row-height-dialog { width:min(360px, calc(100vw - 48px)); }
+        #max-count-dialog { width:min(400px, calc(100vw - 48px)); }
+        #time-range-dialog { width:min(400px, calc(100vw - 48px)); }
+        #row-height-dialog::backdrop, #max-count-dialog::backdrop, #time-range-dialog::backdrop { background:rgba(0,0,0,0.7); }
+        #row-height-dialog h2, #max-count-dialog h2, #time-range-dialog h2 { margin:0 0 16px; font-size:18px; font-weight:500; }
+        #row-height-dialog label, #max-count-dialog label, #time-range-dialog label { display:block; margin-bottom:8px; font-size:13px; }
+        #row-height-input, #max-count-input, #time-range-dialog input { width:100%; box-sizing:border-box; padding:8px; background:#1e1e1e; color:white; border:1px solid #666; border-radius:4px; font:inherit; }
+        .date-input-row { position:relative; display:flex; gap:8px; margin-bottom:12px; }
+        #time-range-dialog .date-input-row input[type="text"] { flex:1 1 auto; min-width:0; width:auto; }
+        #time-range-dialog .date-input-row input[type="date"] { position:absolute; top:0; right:0; width:40px; height:100%; padding:0; border:0; opacity:0; pointer-events:none; }
+        .date-picker-button { flex:0 0 40px; padding:6px; font-size:17px; }
+        #max-count-description { margin:0 0 14px; color:#ccc; font-size:13px; line-height:1.45; }
+        .dialog-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+        .dialog-actions button { padding:7px 12px; background:#444; color:white; border:1px solid #666; border-radius:4px; cursor:pointer; }
+        .dialog-actions button[type="submit"] { background:#1769aa; border-color:#287fbe; }
+    </style>
+</head>
+<body>
+
+    <!-- SummaryExplorer turns date-column CSV files into filterable heatmaps and summary charts. -->
+    <div id="top-bar" style="display:none;">
+        <div class="field-controls" id="field-controls"></div>
+        <div id="total-count"><span id="total-value">Total: 0</span><span id="peak-count">(Peak: 0)</span></div>
+        <details id="tool-help">
+            <summary aria-label="Help" title="Tool help">?</summary>
+            <div id="tool-help-content">
+                <p>• Drop one or more compatible CSV files onto the page to explore contained data.</p>
+                <p>• Use the top controls to filter values and choose which fields split the heatmap rows. Right-click filters for further options.</p>
+                <p>• Right-click the chart for display customisations and export options. Hover over a cell for details.</p>
+            </div>
+        </details>
+        <div id="filter-settings-menu" class="filter-settings-menu" role="menu" aria-label="Filter settings">
+            <label>
+                <input id="hide-zero-count-values" type="checkbox">
+                <span>Hide filters with zero counts</span>
+            </label>
+        </div>
+        <div id="menu-popup" role="menu" aria-label="Settings">
+            <button type="button" role="menuitem" data-action="timerange">Limit time range</button>
+            <button type="button" role="menuitem" data-action="rowheight">Set row height</button>
+            <button type="button" role="menuitem" data-action="maxcount">Set color scale maximum</button>
+            <button type="button" role="menuitem" data-action="colormap">Change colormap</button>
+            <button type="button" role="menuitem" data-action="labelformat">Switch label format</button>
+            <button type="button" role="menuitem" data-action="png">Export PNG</button>
+            <button type="button" role="menuitem" data-action="csv">Export CSV</button>
+        </div>
+    </div>
+
+    <h1 id="plot-heading" style="display:none;"></h1>
+    <div id="data-status" aria-live="polite"></div>
+    <div id="copy-status" aria-live="polite"></div>
+    <div id="plot" role="status" aria-live="polite" style="display:none;">Drag and drop a CSV file.</div>
+    <div id="sticky-heatmap-xaxis" aria-hidden="true">
+        <div class="axis-track"></div>
+    </div>
+    <div id="sticky-colorbar" aria-hidden="true"><div id="sticky-colorbar-gradient"></div><div id="sticky-colorbar-ticks"></div></div>
+    <div id="bar-plot" role="img" aria-label="Bar chart showing total counts by time" style="display:none;"></div>
+    <div id="busy-indicator" role="status" aria-live="polite" aria-label="Computing chart">
+        <div class="spinner"></div>
+    </div>
+    <div id="drop-overlay" aria-hidden="true">
+        <div id="drop-message">Drag and drop one or more compatible CSV files</div>
+    </div>
+    <dialog id="row-height-dialog" aria-labelledby="row-height-title">
+        <form id="row-height-form" novalidate>
+            <h2 id="row-height-title">Set row height</h2>
+            <label for="row-height-input">10 - 100 pixels</label>
+            <input id="row-height-input" type="number" min="10" max="100" step="5" required>
+            <div class="dialog-actions">
+                <button type="button" id="row-height-cancel">Cancel</button>
+                <button type="submit">Apply</button>
+            </div>
+        </form>
+    </dialog>
+    <dialog id="max-count-dialog" aria-labelledby="max-count-title">
+        <form id="max-count-form">
+            <h2 id="max-count-title">Set maximum count</h2>
+            <p id="max-count-description">Choose the upper count used to scale the heatmap colors. Values at or above this limit use the maximum color, while a lower limit can make smaller differences easier to see.</p>
+            <label for="max-count-input">Maximum count</label>
+            <input id="max-count-input" type="number" min="1" step="1" required>
+            <div class="dialog-actions">
+                <button type="button" id="max-count-cancel">Cancel</button>
+                <button type="submit">Apply</button>
+            </div>
+        </form>
+    </dialog>
+    <dialog id="time-range-dialog" aria-labelledby="time-range-title">
+        <form id="time-range-form">
+            <h2 id="time-range-title">Limit time range</h2>
+            <label for="time-range-start">Start date (yyyy-mm-dd)</label>
+            <div class="date-input-row">
+                <input id="time-range-start" type="text" inputmode="numeric" placeholder="yyyy-mm-dd" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" title="Enter a date as yyyy-mm-dd" required>
+                <button class="date-picker-button" type="button" data-picker="time-range-start-picker" aria-label="Choose start date from calendar" title="Choose start date from calendar">▦</button>
+                <input id="time-range-start-picker" type="date" aria-label="Choose start date from calendar">
+            </div>
+            <label for="time-range-end">End date (yyyy-mm-dd, inclusive)</label>
+            <div class="date-input-row">
+                <input id="time-range-end" type="text" inputmode="numeric" placeholder="yyyy-mm-dd" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" title="Enter a date as yyyy-mm-dd" required>
+                <button class="date-picker-button" type="button" data-picker="time-range-end-picker" aria-label="Choose end date from calendar" title="Choose end date from calendar">▦</button>
+                <input id="time-range-end-picker" type="date" aria-label="Choose end date from calendar">
+            </div>
+            <div class="dialog-actions">
+                <button type="button" id="time-range-clear">Clear limits</button>
+                <button type="button" id="time-range-cancel">Cancel</button>
+                <button type="submit">Apply</button>
+            </div>
+        </form>
+    </dialog>
+
+    <script>
+        //#region Data parsing
+        let rawData = [];
+        const fieldColors = new Map();
+        const fieldColorPalette = [
+            "#8FBFDB", "#B99ED6", "#8BCDB3", "#DDB36F",
+            "#D99A9A", "#B8CC7D", "#91A9DC", "#D3A184"
+        ];
+        const valuesSortedLast = ["", "(blank)", "~", "N/A", "n/a", "none", "null"];
+        let timeCols = [];
+        let allTimeCols = [];
+        let activeTimeRange = null;
+        let timeAxisOffset = 0;
+        let hasTimeAxis = false;
+        let dataRevision = 0;
+        let fields = [];
+        const activeFilters = Object.create(null);
+        const filterDrops = new Map();
+        let hideZeroCountValues = false;
+        function compareFilterValues(a, b) {
+            const first = String(a);
+            const second = String(b);
+            const firstSpecialIndex = valuesSortedLast.indexOf(first);
+            const secondSpecialIndex = valuesSortedLast.indexOf(second);
+            if (firstSpecialIndex >= 0 || secondSpecialIndex >= 0) {
+                if (firstSpecialIndex < 0) return -1;
+                if (secondSpecialIndex < 0) return 1;
+                return firstSpecialIndex - secondSpecialIndex;
+            }
+            return first.localeCompare(second, undefined, { numeric: true, sensitivity: "base" });
+        }
+        function formatCount(value) {
+            return value >= 1_000_000
+                ? `${Number((value / 1_000_000).toFixed(1))}m`
+                : value >= 1_000
+                    ? `${Number((value / 1_000).toFixed(1))}k`
+                    : value.toLocaleString();
+        }
+        //#region Developer defaults
+        const colorScales = [
+            [[0, "#00007f"], [0.125, "#0000ff"], [0.375, "#00ffff"], [0.625, "#ffff00"], [0.875, "#ff0000"], [1, "#7f0000"]],
+            [[0, "#d7191c"], [0.5, "#ffff00"], [1, "#1a9641"]],
+            "Viridis"
+        ];
+        const DEFAULT_SETTINGS = {
+            rowHeight: 20,
+            maxCount: 100000,
+            colorScaleIndex: 0
+        };
+        let currentColorScaleIndex = DEFAULT_SETTINGS.colorScaleIndex;
+        let currentColorScale = colorScales[currentColorScaleIndex];
+        let rowHeight = DEFAULT_SETTINGS.rowHeight;
+        let maxCount = DEFAULT_SETTINGS.maxCount;
+        //#endregion
+        function setExplorerTitle(fileName) {
+            document.getElementById('plot-heading').textContent =
+                fileName.replace(/\.csv$/i, "");
+        }
+
+        function parseCsv(text) {
+            const rows = [];
+            let row = [];
+            let field = "";
+            let inQuotes = false;
+
+            for (let index = 0; index < text.length; index++) {
+                const character = text[index];
+                if (inQuotes) {
+                    if (character === '"' && text[index + 1] === '"') {
+                        field += '"';
+                        index++;
+                    } else if (character === '"') {
+                        inQuotes = false;
+                    } else {
+                        field += character;
+                    }
+                } else if (character === '"' && field.length === 0) {
+                    inQuotes = true;
+                } else if (character === ",") {
+                    row.push(field);
+                    field = "";
+                } else if (character === "\n" || character === "\r") {
+                    row.push(field);
+                    if (row.some(value => value.length > 0)) rows.push(row);
+                    row = [];
+                    field = "";
+                    if (character === "\r" && text[index + 1] === "\n") index++;
+                } else {
+                    field += character;
+                }
+            }
+
+            if (inQuotes) throw new Error("The CSV contains an unterminated quoted field.");
+            if (field.length || row.length) {
+                row.push(field);
+                if (row.some(value => value.length > 0)) rows.push(row);
+            }
+            return rows;
+        }
+
+        function parseDateColumn(header) {
+            const dateTimeMatch = /^(\d{4}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d{4})(?: (\d{2}):(\d{2}))?$/.exec(header);
+            if (!dateTimeMatch) return null;
+
+            const [, date, hour = "00", minute = "00"] = dateTimeMatch;
+            if (Number(hour) > 23 || Number(minute) > 59) return null;
+
+            let isoDate;
+            if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                isoDate = date;
+            } else {
+                const [, day, month, year] = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(date);
+                isoDate = `${year}-${month}-${day}`;
+            }
+
+            const parsedDate = new Date(`${isoDate}T00:00:00Z`);
+            return Number.isFinite(parsedDate.getTime()) &&
+                parsedDate.toISOString().slice(0, 10) === isoDate
+                ? `${isoDate}T${hour}:${minute}`
+                : null;
+        }
+
+        function getTimeColumns(normalizedTimes, fallbackStep) {
+            const columns = normalizedTimes.map(time => ({
+                timestamp: Date.parse(`${time}:00Z`),
+                sourceTime: time
+            })).sort((a, b) => a.timestamp - b.timestamp);
+            let smallestStep = columns.length < 2 ? fallbackStep : Infinity;
+            for (let index = 1; index < columns.length; index++) {
+                smallestStep = Math.min(
+                    smallestStep,
+                    columns[index].timestamp - columns[index - 1].timestamp
+                );
+            }
+
+            const completeColumns = [];
+            columns.forEach((column, index) => {
+                if (index > 0) {
+                    const previousTimestamp = columns[index - 1].timestamp;
+                    for (
+                        let timestamp = previousTimestamp + smallestStep;
+                        timestamp < column.timestamp;
+                        timestamp += smallestStep
+                    ) {
+                        completeColumns.push({
+                            time: new Date(timestamp).toISOString().slice(0, 19),
+                            sourceTime: null
+                        });
+                    }
+                }
+                completeColumns.push({
+                    time: new Date(column.timestamp).toISOString().slice(0, 19),
+                    sourceTime: column.sourceTime
+                });
+            });
+            const columnTimestamps = completeColumns.map(({ time }) => Date.parse(`${time}Z`));
+            let columnStep = Number.isFinite(smallestStep) ? smallestStep : 0;
+            for (let index = 1; index < columnTimestamps.length; index++) {
+                columnStep = Math.min(columnStep, columnTimestamps[index] - columnTimestamps[index - 1]);
+            }
+            return { columns: completeColumns, halfStep: columnStep / 2 };
+        }
+
+        function loadData(csvTexts) {
+            if (csvTexts === undefined) { throw new Error("Please drag and drop one or more compatible CSV files."); }
+            const inputs = Array.isArray(csvTexts) ? csvTexts : [csvTexts];
+            if (!inputs.length) throw new Error("Please provide at least one CSV file.");
+
+            let filterFields = null;
+            let hasExplicitTimes = false;
+            const normalizedTimes = new Set();
+            const parsedRows = [];
+
+            inputs.forEach((csvText, fileIndex) => {
+                const rows = parseCsv(csvText);
+                const headers = rows.shift()?.map((header, index) =>
+                    index === 0 ? header.replace(/^\uFEFF/, "").trim() : header.trim()
+                );
+                if (!headers || headers.length < 2 || headers.some(header => !header) ||
+                    new Set(headers).size !== headers.length) {
+                    throw new Error(`CSV ${fileIndex + 1} must have unique, non-empty column names.`);
+                }
+
+                const firstDateIndex = headers.findIndex(header => parseDateColumn(header) !== null);
+                if (firstDateIndex < 1) {
+                    throw new Error(`CSV ${fileIndex + 1} must have filter columns followed by dates named YYYY-MM-DD or DD/MM/YYYY, optionally followed by HH:MM.`);
+                }
+
+                const currentFields = headers.slice(0, firstDateIndex);
+                if (filterFields === null) {
+                    filterFields = currentFields;
+                } else if (
+                    currentFields.length !== filterFields.length ||
+                    filterFields.some(field => !currentFields.includes(field))
+                ) {
+                    throw new Error(`CSV ${fileIndex + 1} has different filter fields from the first CSV.`);
+                }
+
+                const dateHeaders = headers.slice(firstDateIndex);
+                const times = dateHeaders.map(parseDateColumn);
+                if (times.some(time => time === null)) {
+                    throw new Error(`All time columns in CSV ${fileIndex + 1} must be valid dates, optionally followed by HH:MM.`);
+                }
+                if (new Set(times).size !== times.length) {
+                    throw new Error(`CSV ${fileIndex + 1} contains duplicate time columns.`);
+                }
+                times.forEach(time => normalizedTimes.add(time));
+                hasExplicitTimes ||= dateHeaders.some(header => / \d{2}:\d{2}$/.test(header));
+
+                if (!rows.length || rows.some(values => values.length !== headers.length)) {
+                    throw new Error(`CSV ${fileIndex + 1} is empty or has rows with inconsistent column counts.`);
+                }
+
+                const fieldIndexes = filterFields.map(field => currentFields.indexOf(field));
+                rows.forEach((values, rowIndex) => {
+                    const record = Object.fromEntries(fieldIndexes.map((sourceIndex, index) => [
+                        filterFields[index],
+                        values[sourceIndex].trim()
+                    ]));
+                    const valuesByTime = new Map();
+                    times.forEach((time, index) => {
+                        const value = values[firstDateIndex + index].trim();
+                        const number = value === "" ? 0 : Number(value);
+                        if (!Number.isFinite(number)) {
+                            throw new Error(`CSV ${fileIndex + 1}, row ${rowIndex + 2} has an invalid value for ${dateHeaders[index]}.`);
+                        }
+                        valuesByTime.set(time, Math.max(0, number));
+                    });
+                    parsedRows.push({ record, valuesByTime });
+                });
+            });
+
+            const { columns: timeColumns, halfStep } = getTimeColumns(
+                [...normalizedTimes],
+                hasExplicitTimes ? 0 : 86400000
+            );
+            const parsedData = parsedRows.map(({ record, valuesByTime }) => {
+                timeColumns.forEach(({ time, sourceTime }) => {
+                    record[time] = sourceTime === null ? 0 : valuesByTime.get(sourceTime) ?? 0;
+                });
+                return record;
+            });
+
+            fields = filterFields;
+            fieldColors.clear();
+            fields.forEach((field, index) => {
+                fieldColors.set(field, fieldColorPalette[index % fieldColorPalette.length]);
+            });
+            allTimeCols = timeColumns.map(({ time }) => time);
+            timeCols = [...allTimeCols];
+            activeTimeRange = null;
+            timeAxisOffset = halfStep;
+            hasTimeAxis = hasExplicitTimes;
+            rawData = parsedData;
+            dataRevision++;
+        }
+
+        //#endregion
+        //#region Filter controls
+        function initFilters() {
+            const area = document.getElementById('field-controls');
+            area.replaceChildren();
+            filterDrops.clear();
+            const defaultSplitFields = fields.slice(0, 1);
+            fields.forEach(field => {
+                activeFilters[field] = new Set();
+                const vals = [...new Set(rawData.map(d => d[field]))];
+                vals.sort(compareFilterValues);
+
+                const fieldControl = document.createElement('div');
+                fieldControl.className = 'field-control';
+                fieldControl.dataset.field = field;
+
+                const drop = document.createElement('div');
+                drop.className = 'custom-dropdown';
+                drop.dataset.field = field;
+                const dropButton = document.createElement('button');
+                dropButton.className = 'dropbtn';
+                dropButton.title = 'Filter values';
+                const buttonLabel = document.createElement('div');
+                buttonLabel.className = 'btn-label';
+                const fieldName = document.createElement('span');
+                fieldName.className = 'field-name';
+                fieldName.textContent = field;
+                fieldName.style.color = fieldColors.get(field);
+                const fieldCount = document.createElement('span');
+                fieldCount.className = 'field-count';
+                buttonLabel.append(fieldName, fieldCount);
+                const arrow = document.createElement('small');
+                arrow.textContent = '▼';
+                dropButton.append(buttonLabel, arrow);
+
+                const menu = document.createElement('div');
+                menu.className = 'dropdown-content';
+                if (vals.length > 20) menu.classList.add('scrollable');
+                const allButton = document.createElement('button');
+                allButton.className = 'all-btn';
+                allButton.type = 'button';
+                allButton.title = 'Select all filter values, or clear them if all are selected';
+                allButton.textContent = 'All';
+                menu.appendChild(allButton);
+                vals.forEach(value => {
+                    const option = document.createElement('label');
+                    const optionText = document.createElement('span');
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.title = 'Include or exclude this value';
+                    checkbox.value = value;
+                    optionText.append(
+                        checkbox,
+                        document.createTextNode(` ${value === "" ? "(blank)" : value}`)
+                    );
+
+                    const count = document.createElement('span');
+                    count.className = 'count-badge';
+                    count.dataset.val = value;
+                    count.textContent = '0';
+                    option.append(optionText, count);
+                    menu.appendChild(option);
+                });
+                drop.append(dropButton, menu);
+                filterDrops.set(field, drop);
+
+                const splitLabel = document.createElement('label');
+                splitLabel.className = 'split-label';
+                const splitCheckbox = document.createElement('input');
+                splitCheckbox.type = 'checkbox';
+                splitCheckbox.className = 'split-field';
+                splitCheckbox.title = `Split rows by ${field}`;
+                splitCheckbox.setAttribute('aria-label', `Split rows by ${field}`);
+                splitCheckbox.value = field;
+                splitCheckbox.checked = defaultSplitFields.includes(field);
+                splitLabel.appendChild(splitCheckbox);
+
+                const dragHandle = document.createElement('button');
+                dragHandle.className = 'drag-handle';
+                dragHandle.type = 'button';
+                dragHandle.draggable = true;
+                dragHandle.textContent = '⋮';
+                dragHandle.title = "Drag to reorder";
+                dragHandle.setAttribute('aria-label', "Drag to reorder");
+
+                dropButton.onclick = (e) => {
+                    e.stopPropagation();
+                    const wasOpen = menu.classList.contains('show');
+                    document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
+                    if (!wasOpen) menu.classList.add('show');
+                };
+                menu.onclick = (e) => e.stopPropagation();
+                allButton.onclick = () => {
+                    const allSelected = vals.every(value => activeFilters[field].has(String(value)));
+                    activeFilters[field] = allSelected ? new Set() : new Set(vals.map(String));
+                    menu.querySelectorAll('input[type="checkbox"]').forEach(input => {
+                        input.checked = activeFilters[field].has(input.value);
+                    });
+                    updatePlot();
+                };
+                menu.querySelectorAll('input').forEach(i => i.onchange = (e) => {
+                    e.target.checked ? activeFilters[field].add(e.target.value) : activeFilters[field].delete(e.target.value);
+                    updateActiveFilterLabel(drop, field);
+                    updatePlot();
+                });
+                fieldControl.append(dragHandle, splitLabel, drop);
+                area.appendChild(fieldControl);
+            });
+
+            let draggedControl = null;
+            area.ondragstart = event => {
+                if (!event.target.closest('.drag-handle')) {
+                    event.preventDefault();
+                    return;
+                }
+                draggedControl = event.target.closest('.field-control');
+                draggedControl.classList.add('dragging');
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', draggedControl.dataset.field);
+            };
+            area.ondragover = event => {
+                const target = event.target.closest('.field-control');
+                if (!draggedControl || !target || target === draggedControl) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+                area.querySelectorAll('.drag-target').forEach(control => control.classList.remove('drag-target'));
+                target.classList.add('drag-target');
+            };
+            area.ondrop = event => {
+                const target = event.target.closest('.field-control');
+                if (!draggedControl || !target || target === draggedControl) return;
+                event.preventDefault();
+
+                const targetBounds = target.getBoundingClientRect();
+                if (event.clientX < targetBounds.left + targetBounds.width / 2) {
+                    area.insertBefore(draggedControl, target);
+                } else {
+                    area.insertBefore(draggedControl, target.nextSibling);
+                }
+                fields = Array.from(area.querySelectorAll('.field-control'), control => control.dataset.field);
+                updatePlot();
+            };
+            area.ondragend = () => {
+                area.querySelectorAll('.dragging, .drag-target').forEach(control => {
+                    control.classList.remove('dragging', 'drag-target');
+                });
+                draggedControl = null;
+            };
+        }
+
+        //#endregion
+        //#region File loading and filtered data
+        const filterSettingsMenu = document.getElementById('filter-settings-menu');
+        const hideZeroCountCheckbox = document.getElementById('hide-zero-count-values');
+        hideZeroCountCheckbox.onchange = () => {
+            hideZeroCountValues = hideZeroCountCheckbox.checked;
+            updateFilterCounts();
+        };
+        filterSettingsMenu.onclick = event => event.stopPropagation();
+        document.getElementById('field-controls').addEventListener('contextmenu', event => {
+            if (!event.target.closest('.field-control')) return;
+            event.preventDefault();
+            document.querySelectorAll('.dropdown-content').forEach(dropdown => dropdown.classList.remove('show'));
+            filterSettingsMenu.classList.add('open');
+            const bounds = filterSettingsMenu.getBoundingClientRect();
+            filterSettingsMenu.style.left = `${Math.max(8, Math.min(event.clientX, innerWidth - bounds.width - 8))}px`;
+            filterSettingsMenu.style.top = `${Math.max(8, Math.min(event.clientY, innerHeight - bounds.height - 8))}px`;
+        });
+        window.onclick = event => {
+            document.querySelectorAll('.dropdown-content').forEach(dropdown => dropdown.classList.remove('show'));
+            if (!event.target.closest('#filter-settings-menu')) filterSettingsMenu.classList.remove('open');
+        };
+
+        const dropOverlay = document.getElementById('drop-overlay');
+        const dataStatus = document.getElementById('data-status');
+        let fileDragDepth = 0;
+
+        function hasDraggedFiles(event) {
+            return Array.from(event.dataTransfer?.types || []).includes("Files");
+        }
+
+        function setDataStatus(message, isError = false) {
+            dataStatus.textContent = message;
+            dataStatus.classList.toggle('error', isError);
+        }
+
+        function setDropOverlayVisible(visible) {
+            dropOverlay.classList.toggle('visible', visible);
+            dropOverlay.setAttribute('aria-hidden', String(!visible));
+        }
+
+        document.addEventListener('dragenter', event => {
+            if (!hasDraggedFiles(event)) return;
+            event.preventDefault();
+            fileDragDepth++;
+            setDropOverlayVisible(true);
+        });
+        document.addEventListener('dragover', event => {
+            if (!hasDraggedFiles(event)) return;
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+            setDropOverlayVisible(true);
+        });
+        document.addEventListener('dragleave', event => {
+            if (fileDragDepth === 0) return;
+            event.preventDefault();
+            fileDragDepth = Math.max(0, fileDragDepth - 1);
+            if (fileDragDepth === 0) setDropOverlayVisible(false);
+        });
+        document.addEventListener('drop', async event => {
+            if (!hasDraggedFiles(event) && fileDragDepth === 0) return;
+            event.preventDefault();
+            fileDragDepth = 0;
+            setDropOverlayVisible(false);
+
+            const files = Array.from(event.dataTransfer?.files || []);
+            if (!files.length || files.some(file => !/\.csv$/i.test(file.name || ""))) {
+                setDataStatus("Drop one or more .csv files.", true);
+                return;
+            }
+
+            const fileNames = files.map(file => file.name);
+            setDataStatus(`Loading ${files.length} CSV file${files.length === 1 ? "" : "s"}…`);
+            try {
+                loadData(await Promise.all(files.map(file => file.text())));
+                Object.keys(activeFilters).forEach(field => delete activeFilters[field]);
+                initFilters();
+                document.querySelectorAll('.split-field').forEach(checkbox => {
+                    checkbox.onchange = updatePlot;
+                });
+                document.getElementById("top-bar").style.display="flex";
+                document.getElementById("plot").style.display="block";
+                updatePlot();
+                updateTopBarPosition();
+                loadedFileNames = fileNames;
+                setExplorerTitle(fileNames.map(fileName => fileName.replace(/\.csv$/i, "")).join(", "));
+                document.getElementById("plot-heading").style.display="block";
+                setDataStatus("");
+            } catch (error) {
+                console.error("Could not load dropped CSV files:", error);
+                setDataStatus(`Could not load ${fileNames.join(", ")}: ${error.message}`, true);
+            }
+        });
+
+        function updateActiveFilterLabel(drop, field) {
+            const optionCount = hideZeroCountValues
+                ? Array.from(drop.querySelectorAll('.dropdown-content label')).filter(label => !label.hidden).length
+                : drop.querySelectorAll('.dropdown-content input[type="checkbox"]').length;
+            const selectedCount = activeFilters[field].size;
+            drop.querySelector('.field-name').textContent = field;
+            drop.querySelector('.field-count').textContent = ` (${optionCount})`;
+            drop.querySelector('.dropbtn').classList.toggle(
+                'filtered',
+                selectedCount > 0 && selectedCount < optionCount
+            );
+        }
+
+        function getRowTotals() {
+            return rawData.map(row => {
+                let sum = 0;
+                for (const time of timeCols) sum += row[time] || 0;
+                return sum;
+            });
+        }
+
+        function updateFilterCounts() {
+            const rowTotals = getRowTotals();
+            fields.forEach(field => {
+                const drop = filterDrops.get(field);
+
+                const sums = new Map();
+                rawData.forEach((row, index) => {
+                    const matches = fields.every(f => f === field || activeFilters[f].size === 0 || activeFilters[f].has(row[f]));
+                    if (matches) sums.set(row[field], (sums.get(row[field]) || 0) + rowTotals[index]);
+                });
+                drop.querySelectorAll('.count-badge').forEach(badge => {
+                    const sum = sums.get(badge.dataset.val) || 0;
+                    badge.innerText = `(${sum.toLocaleString()})`;
+                    badge.parentElement.hidden = hideZeroCountValues && sum === 0;
+                });
+
+                updateActiveFilterLabel(drop, field);
+            });
+        }
+        
+        function getGroupedData() {
+            const checkedFields = new Set(
+                Array.from(document.querySelectorAll('.split-field:checked')).map(cb => cb.value)
+            );
+            const splitFields = fields.filter(field => checkedFields.has(field));
+            const rowTotals = getRowTotals();
+            const filtered = [];
+            let total = 0;
+            let unfilteredTotal = 0;
+            rawData.forEach((row, index) => {
+                unfilteredTotal += rowTotals[index];
+                if (fields.every(f => activeFilters[f].size === 0 || activeFilters[f].has(row[f]))) {
+                    filtered.push(row);
+                    total += rowTotals[index];
+                }
+            });
+        
+            const hasActiveFilters = fields.some(field => activeFilters[field].size > 0);
+            document.getElementById('total-value').textContent =
+                `Total: ${total.toLocaleString()}${hasActiveFilters ? ` / ${unfilteredTotal.toLocaleString()}` : ""}`;
+            const peakCount = document.getElementById('peak-count');
+            peakCount.textContent = "(Peak: 0)";
+        
+            const grouped = Object.create(null);
+            const groupValues = new Map();
+            if (!filtered.length || total === 0) {
+                if (activeTimeRange) {
+                    grouped["No data in selected range"] = timeCols.map(() => 0);
+                    groupValues.set("No data in selected range", []);
+                    return { grouped, splitFields, groupValues, hasData: true, isEmpty: true };
+                }
+                return { grouped, splitFields, groupValues, hasData: false };
+            }
+
+            if (!splitFields.length) {
+                grouped["All Data"] = new Array(timeCols.length).fill(0);
+                filtered.forEach(row => timeCols.forEach((time, i) => grouped["All Data"][i] += (row[time] || 0)));
+            } else {
+                filtered.forEach(row => {
+                    const values = splitFields.map(f => row[f]);
+                    const key = JSON.stringify(values);
+                    if (!grouped[key]) grouped[key] = new Array(timeCols.length).fill(0);
+                    groupValues.set(key, values);
+                    timeCols.forEach((time, i) => grouped[key][i] += (row[time] || 0));
+                });
+            }
+            const peak = Object.values(grouped).reduce(
+                (maximum, values) => values.reduce((rowMaximum, value) =>
+                    Math.max(rowMaximum, value), maximum),
+                0
+            );
+            peakCount.textContent = `(Peak: ${peak.toLocaleString()})`;
+            return { grouped, splitFields, groupValues, hasData: true };
+        }
+
+        //#endregion
+        //#region Plot axis and tooltip helpers
+        let plotRenderQueue = Promise.resolve();
+        let plotRenderVersion = 0;
+        let currentHeatmapCsvData = null;
+        let plotInitialized = false;
+        let barPlotInitialized = false;
+        let syncingXAxis = false;
+        let plotClickHandler = null;
+        let barClickHandler = null;
+        let barYAxisDataRange = null;
+        let plotRangeHandler = null;
+        let barRangeHandler = null;
+        let xAxisTickKey = "";
+        let copyStatusTimeout = null;
+        let stickyXAxisKey = "";
+        let colorbarSizing = null;
+        let loadedFileNames = [];
+        let labelFormatCompact = false;
+        function exportBaseName() {
+            const base = loadedFileNames
+                .map(fileName => fileName.replace(/\.csv$/i, ""))
+                .join(", ");
+            return base || "SummaryExplorer";
+        }
+        let stickyColorbarKey = "";
+
+        function getXAxisTickInterval(range) {
+            const rangeDays = Math.abs(new Date(range[1]) - new Date(range[0])) / 86400000;
+            if (hasTimeAxis && rangeDays <= 2) {
+                if (rangeDays <= 1 / 12) return 900000;
+                if (rangeDays <= 0.25) return 3600000;
+                if (rangeDays <= 1) return 10800000;
+                return 21600000;
+            }
+            if (rangeDays <= 21) return 86400000;
+            if (rangeDays <= 120) return 604800000;
+            return "M1";
+        }
+
+        function getXAxisTickLabels(range, interval) {
+            const getTimestamp = value => {
+                if (value instanceof Date) return value.getTime();
+                return Date.parse(
+                    typeof value === "string" && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(value)
+                        ? `${value}Z`
+                        : value
+                );
+            };
+            const start = getTimestamp(range[0]);
+            const end = getTimestamp(range[1]);
+            const timestamps = [];
+            if (interval === "M1") {
+                const startDate = new Date(start);
+                let timestamp = Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), 1);
+                if (timestamp < start) {
+                    timestamp = Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth() + 1, 1);
+                }
+                while (timestamp <= end) {
+                    timestamps.push(timestamp);
+                    const date = new Date(timestamp);
+                    timestamp = Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1);
+                }
+            } else {
+                for (
+                    let timestamp = Math.ceil(start / interval) * interval;
+                    timestamp <= end;
+                    timestamp += interval
+                ) {
+                    timestamps.push(timestamp);
+                }
+            }
+            if (!timestamps.length) {
+                timestamps.push(start);
+            }
+
+            let previousYear = null;
+            const ticktext = timestamps.map(timestamp => {
+                const date = new Date(timestamp);
+                const year = date.getUTCFullYear();
+                const month = date.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+                const showYear = year !== previousYear;
+                previousYear = year;
+                const dateLabel = `${date.getUTCDate()} ${month}`;
+                return `${dateLabel}${showYear ? `<br>${year}` : ""}`;
+            });
+            return {
+                tickvals: timestamps.map(timestamp => new Date(timestamp).toISOString()),
+                ticktext
+            };
+        }
+
+        async function syncXAxis(source, target) {
+            if (syncingXAxis || !source._fullLayout || !target._fullLayout) return;
+            const range = source._fullLayout.xaxis.range;
+            const ticks = getXAxisTickLabels(range, getXAxisTickInterval(range));
+            const key = JSON.stringify([ticks.tickvals, ticks.ticktext]);
+            const targetRange = target._fullLayout.xaxis.range;
+            const rangeChanged = range.some((value, index) =>
+                new Date(value).getTime() !== new Date(targetRange[index]).getTime()
+            );
+            if (!rangeChanged && key === xAxisTickKey) return;
+
+            syncingXAxis = true;
+            xAxisTickKey = key;
+            const tickUpdate = {
+                'xaxis.tickmode': 'array',
+                'xaxis.tickvals': ticks.tickvals,
+                'xaxis.ticktext': ticks.ticktext
+            };
+            const updates = [];
+            if (rangeChanged) {
+                updates.push(Plotly.relayout(target, { 'xaxis.range': range, ...tickUpdate }));
+            } else {
+                updates.push(Plotly.relayout(target, tickUpdate));
+            }
+            if (key !== JSON.stringify([
+                source.layout.xaxis.tickvals,
+                source.layout.xaxis.ticktext
+            ])) {
+                updates.push(Plotly.relayout(source, tickUpdate));
+            }
+            try {
+                await Promise.all(updates);
+            } catch (error) {
+                xAxisTickKey = "";
+                console.error("Failed to synchronize chart axes:", error);
+            } finally {
+                syncingXAxis = false;
+                updateStickyHeatmapXAxis();
+            }
+        }
+
+        function updateStickyHeatmapXAxis() {
+            const stickyAxis = document.getElementById("sticky-heatmap-xaxis");
+            const plot = document.getElementById("plot");
+            const layout = plot._fullLayout;
+            if (!plotInitialized || !layout || !layout.xaxis.range) {
+                stickyAxis.classList.remove("visible");
+                plot.classList.remove("sticky-xaxis-active");
+                stickyAxis.setAttribute("aria-hidden", "true");
+                return;
+            }
+
+            const bounds = plot.getBoundingClientRect();
+            const axisBottom = bounds.bottom;
+            const viewportHeight = window.innerHeight;
+            if (bounds.top >= viewportHeight || axisBottom <= 0) {
+                stickyAxis.classList.remove("visible");
+                plot.classList.remove("sticky-xaxis-active");
+                stickyAxis.setAttribute("aria-hidden", "true");
+                return;
+            }
+
+            const axisTop = Math.min(
+                viewportHeight - stickyAxis.offsetHeight,
+                axisBottom - layout.margin.b
+            );
+            stickyAxis.style.top = `${Math.max(0, axisTop)}px`;
+            const track = stickyAxis.querySelector(".axis-track");
+            const trackLeft = bounds.left + layout.margin.l;
+            const trackWidth = bounds.width - layout.margin.l - layout.margin.r;
+            track.style.left = `${trackLeft}px`;
+            track.style.width = `${Math.max(0, trackWidth)}px`;
+
+            const tickvals = plot.layout.xaxis.tickvals || layout.xaxis.tickvals || [];
+            const ticktext = plot.layout.xaxis.ticktext || layout.xaxis.ticktext || [];
+            const rangeStart = new Date(layout.xaxis.range[0]).getTime();
+            const rangeEnd = new Date(layout.xaxis.range[1]).getTime();
+            const renderKey = JSON.stringify([
+                tickvals,
+                ticktext,
+                rangeStart,
+                rangeEnd,
+                trackWidth
+            ]);
+            if (renderKey !== stickyXAxisKey) {
+                track.replaceChildren();
+                const axisLine = document.createElement("div");
+                axisLine.className = "axis-line";
+                track.appendChild(axisLine);
+                tickvals.forEach((value, index) => {
+                    const timestamp = new Date(value).getTime();
+                    const position = (timestamp - rangeStart) / (rangeEnd - rangeStart);
+                    if (!Number.isFinite(position) || position < 0 || position > 1) return;
+
+                    const tick = document.createElement("div");
+                    tick.className = "axis-tick";
+                    tick.style.left = `${position * trackWidth}px`;
+                    track.appendChild(tick);
+
+                    const label = document.createElement("div");
+                    label.className = "axis-label";
+                    label.innerHTML = ticktext[index] || "";
+                    label.style.left = `${position * trackWidth}px`;
+                    if (position === 0) {
+                        label.style.transform = "translateX(0)";
+                        label.style.textAlign = "left";
+                    } else if (position === 1) {
+                        label.style.transform = "translateX(-100%)";
+                        label.style.textAlign = "right";
+                    } else {
+                        label.style.transform = "translateX(-50%)";
+                    }
+                    track.appendChild(label);
+                });
+                stickyXAxisKey = renderKey;
+            }
+
+            if (axisBottom <= viewportHeight) {
+                stickyAxis.classList.remove("visible");
+                plot.classList.remove("sticky-xaxis-active");
+                stickyAxis.setAttribute("aria-hidden", "true");
+                return;
+            }
+
+            stickyAxis.classList.add("visible");
+            plot.classList.add("sticky-xaxis-active");
+            stickyAxis.setAttribute("aria-hidden", "false");
+        }
+
+        function copyTooltipText(lines) {
+            const copyStatus = document.getElementById("copy-status");
+            if (!navigator.clipboard) {
+                console.error("Clipboard access is unavailable in this browser.");
+                copyStatus.textContent = "Clipboard unavailable";
+                return;
+            }
+            navigator.clipboard.writeText(lines.join("\n")).then(() => {
+                copyStatus.textContent = "Tooltip copied";
+                clearTimeout(copyStatusTimeout);
+                copyStatusTimeout = setTimeout(() => {
+                    copyStatus.textContent = "";
+                }, 1800);
+            }).catch(error => {
+                console.error("Failed to copy plot tooltip:", error);
+                copyStatus.textContent = "Copy failed";
+            });
+        }
+
+        //#endregion
+        //#region Plot rendering
+        function getActiveTimeRangeBounds() {
+            if (!activeTimeRange) return null;
+            const start = new Date(`${activeTimeRange.startDate}T00:00:00Z`);
+            const end = new Date(`${activeTimeRange.endDate}T00:00:00Z`);
+            end.setUTCDate(end.getUTCDate() + 1);
+            return [start.toISOString(), end.toISOString()];
+        }
+
+        function getDefaultTimeRangeBounds() {
+            if (!allTimeCols.length) return null;
+            const first = Date.parse(`${allTimeCols[0]}Z`);
+            const last = Date.parse(`${allTimeCols[allTimeCols.length - 1]}Z`);
+            return [
+                new Date(first).toISOString(),
+                new Date(last + 2 * timeAxisOffset).toISOString()
+            ];
+        }
+
+        function renderPlot({ grouped, splitFields, groupValues, hasData, isEmpty = false }) {
+            const plot = document.getElementById('plot');
+            const barPlot = document.getElementById('bar-plot');
+            const version = ++plotRenderVersion;
+            if (!hasData) {
+                currentHeatmapCsvData = null;
+                plotRenderQueue = plotRenderQueue.then(() => {
+                    if (version !== plotRenderVersion) return;
+                    if (plotInitialized) Plotly.purge(plot);
+                    if (barPlotInitialized) Plotly.purge(barPlot);
+                    plotInitialized = false;
+                    barPlotInitialized = false;
+                    plotClickHandler = null;
+                    barYAxisDataRange = null;
+                    plotRangeHandler = null;
+                    barRangeHandler = null;
+                    plot.classList.add('empty-state');
+                    plot.style.height = '160px';
+                    plot.textContent = "No data matches the current selections";
+                    barPlot.style.display = 'none';
+                    colorbarSizing = null;
+                    updateStickyColorbar();
+                    updateStickyHeatmapXAxis();
+                }).catch(error => {
+                    console.error("Failed to clear plot:", error);
+                });
+                return;
+            }
+
+            const yLabels = Object.keys(grouped).sort((a, b) => {
+                const aValues = groupValues.get(a) || [];
+                const bValues = groupValues.get(b) || [];
+                for (let index = 0; index < splitFields.length; index++) {
+                    const comparison = compareFilterValues(aValues[index], bValues[index]);
+                    if (comparison !== 0) return comparison;
+                }
+                return 0;
+            });
+            const escapeHtml = value => String(value).replace(/[&<>"']/g, character => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            })[character]);
+            let maxLabelLineLength = 0;
+            const yTickText = yLabels.map((label, rowIndex) => {
+                const values = groupValues.get(label) || [];
+                if (!values.length) {
+                    maxLabelLineLength = Math.max(maxLabelLineLength, label.length);
+                    return escapeHtml(label);
+                }
+                const previousValues = rowIndex > 0 ? (groupValues.get(yLabels[rowIndex - 1]) || []) : [];
+                const lines = [];
+                let line = [];
+                let lineLength = 0;
+                values.forEach((value, index) => {
+                    const repeated = labelFormatCompact && previousValues[index] === value;
+                    const part = repeated ? "" : (value === "" ? "(blank)" : String(value));
+                    const separatorLength = line.length ? 3 : 0;
+                    if (line.length && lineLength + separatorLength + part.length > 39) {
+                        lines.push(line.join(" - "));
+                        maxLabelLineLength = Math.max(maxLabelLineLength, lineLength);
+                        line = [];
+                        lineLength = 0;
+                    }
+                    if (line.length) lineLength += 3;
+                    const color = fieldColors.get(splitFields[index]);
+                    line.push(`<span style="color:${color}">${escapeHtml(part)}</span>`);
+                    lineLength += part.length;
+                });
+                if (line.length) {
+                    lines.push(line.join(" - "));
+                    maxLabelLineLength = Math.max(maxLabelLineLength, lineLength);
+                }
+                return lines.join("<br>");
+            });
+            const zValues = yLabels.map(label => grouped[label]);
+            currentHeatmapCsvData = isEmpty ? null : {
+                keyHeaders: splitFields.length ? splitFields : ["Label"],
+                headers: timeCols.map(time =>
+                    hasTimeAxis ? time.slice(0, 16).replace("T", " ") : time.slice(0, 10)
+                ),
+                rows: yLabels.map((label, index) => {
+                    const values = groupValues.get(label) || [];
+                    const keyValues = splitFields.length
+                        ? values.map(value => value === "" ? "(blank)" : String(value))
+                        : [label];
+                    return [keyValues, zValues[index]];
+                })
+            };
+            const timeLabels = timeCols.map(time =>
+                hasTimeAxis ? time.slice(0, 16).replace("T", " ") : time.slice(0, 10)
+            );
+            const customData = zValues.map((row, rowIndex) => {
+                const splitValues = groupValues.get(yLabels[rowIndex]) || [];
+                if (!row.length && isEmpty) return [[NaN, ...splitValues, ""]];
+                return row.map((value, timeIndex) => [value, ...splitValues, timeLabels[timeIndex]]);
+            });
+            const tooltipFields = [
+                { label: "Count", value: "%{customdata[0]:,.3~f}" },
+                { label: "Time", value: `%{customdata[${splitFields.length + 1}]}` },
+                ...splitFields.map((field, index) => ({
+                    label: field.charAt(0).toUpperCase() + field.slice(1),
+                    value: `%{customdata[${index + 1}]}`
+                }))
+            ];
+            const tooltipLabelWidth = Math.max(...tooltipFields.map(field => field.label.length));
+            const hoverTemplate = [
+                ...tooltipFields.map(({ label, value }, index) => {
+                    const row = `${label}${'&nbsp;'.repeat(tooltipLabelWidth - label.length)}: ${value}`;
+                    if (index < 2) return `<b>${row}</b>`;
+                    if (index >= 2) {
+                        const field = splitFields[index - 2];
+                        return `<span style="color:${fieldColors.get(field)}">${row}</span>`;
+                    }
+                    return row;
+                }),
+                "<extra></extra>"
+            ].join("<br>");
+            const margins = {
+                t: 12,
+                l: Math.min(276, Math.max(95, 19 + maxLabelLineLength * 7)),
+                r: 110,
+                b: 50
+            };
+            const plotHeight = yLabels.length * rowHeight + margins.t + margins.b;
+            const maxPlotValue = Math.log10(maxCount + 1);
+            const minPlotValue = Math.log10(2);
+            const columnTotals = timeCols.map((_, index) =>
+                zValues.reduce((sum, row) => sum + row[index], 0)
+            );
+            const plottedTimes = timeCols.map(time =>
+                new Date(Date.parse(`${time}Z`) + timeAxisOffset).toISOString()
+            );
+            const activeAxisRange = getActiveTimeRangeBounds();
+            const axisRange = activeAxisRange || getDefaultTimeRangeBounds();
+            const chartTimes = plottedTimes.length ? plottedTimes : [
+                new Date((Date.parse(axisRange[0]) + Date.parse(axisRange[1])) / 2).toISOString()
+            ];
+            const xAxisTickInterval = getXAxisTickInterval(axisRange);
+            const xAxisTickLabels = getXAxisTickLabels([
+                axisRange[0],
+                axisRange[1]
+            ], xAxisTickInterval);
+            xAxisTickKey = JSON.stringify([xAxisTickLabels.tickvals, xAxisTickLabels.ticktext]);
+            const colorbarTicks = [];
+            for (let value = 1; value <= maxCount; value *= 10) {
+                colorbarTicks.push(value);
+            }
+            if (colorbarTicks[colorbarTicks.length - 1] !== maxCount) colorbarTicks.push(maxCount);
+            const barMax = Math.max(0, ...columnTotals);
+            const barTicks = [0];
+            for (let value = 10; value <= barMax; value *= 10) {
+                barTicks.push(value);
+            }
+            const barAxisMax = Math.max(2, barMax + 1);
+            barYAxisDataRange = [0, Math.log10(barAxisMax) * 1.08];
+            const nonzeroBarColumns = columnTotals
+                .map((total, index) => ({
+                    total,
+                    time: plottedTimes[index],
+                    timeLabel: hasTimeAxis
+                        ? timeCols[index].slice(0, 16).replace("T", " ")
+                        : timeCols[index].slice(0, 10)
+                }))
+                .filter(({ total }) => total > 0);
+            const rangeExtendsBeyondData = activeTimeRange && allTimeCols.length &&
+                (activeTimeRange.startDate < allTimeCols[0].slice(0, 10) ||
+                    activeTimeRange.endDate > allTimeCols[allTimeCols.length - 1].slice(0, 10));
+            plot.style.height = `${plotHeight}px`;
+            barPlot.style.display = 'block';
+        
+            colorbarSizing = {
+                heatmapPixelHeight: yLabels.length * rowHeight,
+                colorscale: currentColorScale,
+                zmin: minPlotValue,
+                zmax: maxPlotValue,
+                tickvals: colorbarTicks.map(value => Math.log10(value + 1)),
+                ticktext: colorbarTicks.map(formatCount)
+            };
+            const traces = [{
+                z: zValues.map(r => r.length
+                    ? r.map(v => v === 0 ? NaN : Math.log10(v + 1))
+                    : [NaN]),
+                customdata: customData,
+                hovertemplate: hoverTemplate,
+                x: chartTimes,
+                y: yLabels.map((_, index) => index),
+                type: "heatmap",
+                hoverlabel: { align: "left", font: { family: "Consolas, monospace" } },
+                colorscale: currentColorScale,
+                zmin: minPlotValue,
+                zmax: maxPlotValue,
+                showscale: false,
+                colorbar: {
+                    x: 1.02,
+                    xanchor: "left",
+                    xpad: 0,
+                    thickness: COLORBAR_WIDTH,
+                    thicknessmode: "pixels",
+                    lenmode: "pixels",
+                    len: Math.min(yLabels.length * rowHeight, MAX_COLORBAR_PX),
+                    yanchor: "middle",
+                    y: 0.5,
+                    ypad: 0,
+                    tickmode: "array",
+                    tickvals: colorbarTicks.map(value => Math.log10(value + 1)),
+                    ticktext: colorbarTicks.map(formatCount),
+                    tickfont: { color: "white", size: 12 },
+                    outlinewidth: 0
+                }
+            }];
+            const barTrace = {
+                type: "bar",
+                x: nonzeroBarColumns.map(({ time }) => time),
+                y: nonzeroBarColumns.map(({ total }) => total + 1),
+                base: 1,
+                customdata: nonzeroBarColumns.map(({ total, timeLabel }) => [total, timeLabel]),
+                marker: {
+                    color: "rgba(143, 191, 219, 0.5)",
+                    line: { color: "#8FBFDB", width: 1 }
+                },
+                hoverlabel: {
+                    bgcolor: "#666",
+                    bordercolor: "white",
+                    font: { color: "white" }
+                },
+                hovertemplate: `Total: %{customdata[0]:,.3~f}<br>Time: %{customdata[1]}<extra></extra>`
+            };
+
+            const layout = {
+                paper_bgcolor: "#141414",
+                plot_bgcolor: rangeExtendsBeyondData ? "#333333" : "#141414",
+                width: plot.clientWidth,
+                height: plotHeight,
+                autosize: false,
+                margin: margins,
+                xaxis: {
+                    type: "date",
+                    range: axisRange,
+                    autorange: false,
+                    uirevision: JSON.stringify([dataRevision, activeTimeRange]),
+                    tickmode: "array",
+                    tickvals: xAxisTickLabels.tickvals,
+                    ticktext: xAxisTickLabels.ticktext,
+                    showline: true,
+                    linecolor: "white",
+                    ticks: "outside",
+                    ticklen: 4,
+                    tickcolor: "white",
+                    gridcolor: "#292929",
+                    tickfont: { color: "white", size: 11 }
+                },
+                yaxis: {
+                    type: "linear",
+                    uirevision: version,
+                    autorange: "reversed",
+                    tickmode: "array",
+                    tickvals: yLabels.map((_, index) => index),
+                    ticktext: yTickText,
+                    tickfont: { color: "white", size: 13 },
+                    ticklabelstandoff: 8,
+                    showgrid: false,
+                    zeroline: false,
+                    ticks: "",
+                    ticklen: 0
+                },
+                shapes: Array.from({ length: yLabels.length + 1 }, (_, index) => ({
+                    type: "line",
+                    xref: "paper",
+                    x0: 0,
+                    x1: 1,
+                    yref: "y",
+                    y0: index - 0.5,
+                    y1: index - 0.5,
+                    line: { color: "#292929", width: 1.5 },
+                    layer: "above"
+                }))
+            };
+            const barLayout = {
+                paper_bgcolor: "#141414",
+                plot_bgcolor: rangeExtendsBeyondData ? "#333333" : "#141414",
+                width: barPlot.clientWidth,
+                height: 160,
+                autosize: false,
+                margin: { t: 4, l: margins.l, r: margins.r, b: 42 },
+                bargap: 0,
+                xaxis: {
+                    type: "date",
+                    range: axisRange,
+                    autorange: false,
+                    tickmode: "array",
+                    tickvals: xAxisTickLabels.tickvals,
+                    ticktext: xAxisTickLabels.ticktext,
+                    showline: true,
+                    linecolor: "white",
+                    ticks: "outside",
+                    ticklen: 4,
+                    tickcolor: "white",
+                    gridcolor: "#292929",
+                    tickfont: { color: "white", size: 11 }
+                },
+                yaxis: {
+                    type: "log",
+                    range: barYAxisDataRange,
+                    autorange: false,
+                    tickmode: "array",
+                    tickvals: barTicks.map(value => value + 1),
+                    ticktext: barTicks.map(formatCount),
+                    tickfont: { color: "white", size: 10 },
+                    gridcolor: "#292929",
+                    zeroline: false
+                },
+                showlegend: false
+            };
+
+            plotRenderQueue = plotRenderQueue.then(async () => {
+                if (version !== plotRenderVersion) return;
+                plot.classList.remove('empty-state');
+                if (!plotInitialized) plot.textContent = "";
+                const plotConfig = { responsive: true, displayModeBar: false, doubleClick: false };
+                const render = plotInitialized
+                    ? Plotly.react(plot, traces, layout, plotConfig)
+                    : Plotly.newPlot(plot, traces, layout, plotConfig);
+                await render;
+                plotInitialized = true;
+                if (version !== plotRenderVersion) return;
+                const barRender = barPlotInitialized
+                    ? Plotly.react(barPlot, [barTrace], barLayout, plotConfig)
+                    : Plotly.newPlot(barPlot, [barTrace], barLayout, plotConfig);
+                await barRender;
+                barPlotInitialized = true;
+                if (version !== plotRenderVersion) return;
+                await syncXAxis(plot, barPlot);
+                updateStickyHeatmapXAxis();
+                updateStickyColorbar();
+                if (plotClickHandler) plot.removeListener('plotly_click', plotClickHandler);
+                plotClickHandler = event => {
+                    if (!event.points || !event.points.length) return;
+                    const customdata = event.points[0].customdata;
+                    const tooltipLines = [
+                        `Count: ${Number(customdata[0]).toLocaleString('en-US')}`,
+                        `Time: ${customdata[splitFields.length + 1]}`
+                    ];
+                    splitFields.forEach((field, index) => {
+                        tooltipLines.push(
+                            `${field.charAt(0).toUpperCase() + field.slice(1)}: ${customdata[index + 1]}`
+                        );
+                    });
+                    copyTooltipText(tooltipLines);
+                };
+                plot.on('plotly_click', plotClickHandler);
+                if (barClickHandler) barPlot.removeListener('plotly_click', barClickHandler);
+                barClickHandler = event => {
+                    if (!event.points || !event.points.length) return;
+                    const [total, time] = event.points[0].customdata;
+                    copyTooltipText([
+                        `Total: ${Number(total).toLocaleString('en-US')}`,
+                        `Time: ${time}`
+                    ]);
+                };
+                barPlot.on('plotly_click', barClickHandler);
+                if (plotRangeHandler) plot.removeListener('plotly_relayout', plotRangeHandler);
+                if (barRangeHandler) barPlot.removeListener('plotly_relayout', barRangeHandler);
+                plotRangeHandler = () => syncXAxis(plot, barPlot);
+                barRangeHandler = () => syncXAxis(barPlot, plot);
+                plot.on('plotly_relayout', plotRangeHandler);
+                barPlot.on('plotly_relayout', barRangeHandler);
+            }).catch(error => {
+                console.error("Failed to render plot:", error);
+                if (version === plotRenderVersion) currentHeatmapCsvData = null;
+                Plotly.purge(plot);
+                Plotly.purge(barPlot);
+                plotInitialized = false;
+                barPlotInitialized = false;
+                plotClickHandler = null;
+                barClickHandler = null;
+                barYAxisDataRange = null;
+                plotRangeHandler = null;
+                barRangeHandler = null;
+                plot.classList.remove('empty-state');
+            });
+        }
+        
+        //#endregion
+        //#region Plot settings and responsive sizing
+        let busyCount = 0;
+        function setBusy(active) {
+            busyCount = Math.max(0, busyCount + (active ? 1 : -1));
+            document.getElementById("busy-indicator").classList.toggle("visible", busyCount > 0);
+        }
+
+        function updatePlot() {
+            setBusy(true);
+            // Yield one frame so the spinner paints before the synchronous computation starts.
+            requestAnimationFrame(() => setTimeout(() => {
+                try {
+                    updateFilterCounts();
+                    renderPlot(getGroupedData());
+                } finally {
+                    plotRenderQueue.finally(() => setBusy(false));
+                }
+            }, 0));
+        }
+
+
+        const COLORBAR_WIDTH = 21;
+        const MAX_COLORBAR_PX = 360;
+        const COLORBAR_GAP = 10;
+        const COLORBAR_LABEL_SPACE = 44;
+        const COLORBAR_TOP_GAP = 16;
+        const VIRIDIS_STOPS = [
+            [0, "#440154"], [0.125, "#482878"], [0.25, "#3e4989"], [0.375, "#31688e"],
+            [0.5, "#26828e"], [0.625, "#1f9e89"], [0.75, "#35b779"], [0.875, "#6ece58"], [1, "#fde725"]
+        ];
+
+        function updateStickyColorbar() {
+            const sticky = document.getElementById("sticky-colorbar");
+            const gradient = document.getElementById("sticky-colorbar-gradient");
+            const ticks = document.getElementById("sticky-colorbar-ticks");
+            if (!plotInitialized || !colorbarSizing) {
+                sticky.classList.remove("visible");
+                stickyColorbarKey = "";
+                return;
+            }
+
+            const plot = document.getElementById("plot");
+            const plotRect = plot.getBoundingClientRect();
+            const heatmapRect = plot._fullLayout?.yaxis?._offset !== undefined
+                ? {
+                    top: plotRect.top + plot._fullLayout.yaxis._offset,
+                    bottom: plotRect.top + plot._fullLayout.yaxis._offset + plot._fullLayout.yaxis._length,
+                    right: plotRect.left + plot._fullLayout.xaxis._offset + plot._fullLayout.xaxis._length
+                }
+                : null;
+            const topBarBottom = document.getElementById("top-bar").getBoundingClientRect().bottom;
+            const stickyAxisTop = document.getElementById("sticky-heatmap-xaxis").classList.contains("visible")
+                ? window.innerHeight - 50
+                : window.innerHeight;
+            if (!heatmapRect) {
+                sticky.classList.remove("visible");
+                return;
+            }
+
+            const visibleBottom = Math.min(heatmapRect.bottom, stickyAxisTop, window.innerHeight);
+            const top = Math.max(heatmapRect.top, topBarBottom + COLORBAR_TOP_GAP, COLORBAR_TOP_GAP);
+            const available = visibleBottom - top;
+            if (available <= 0) {
+                sticky.classList.remove("visible");
+                stickyColorbarKey = "";
+                return;
+            }
+
+            const len = Math.min(colorbarSizing.heatmapPixelHeight, available);
+            const left = heatmapRect.right + COLORBAR_GAP;
+            sticky.style.left = `${left}px`;
+            sticky.style.top = `${top}px`;
+            sticky.style.height = `${len}px`;
+            sticky.style.width = `${COLORBAR_WIDTH + COLORBAR_LABEL_SPACE}px`;
+            sticky.classList.add("visible");
+
+            const { zmin, zmax, colorscale, tickvals, ticktext } = colorbarSizing;
+            const key = JSON.stringify([len, colorscale, zmin, zmax, tickvals, ticktext]);
+            if (key === stickyColorbarKey) return;
+            stickyColorbarKey = key;
+
+            const stops = Array.isArray(colorscale) ? colorscale : VIRIDIS_STOPS;
+            gradient.style.width = `${COLORBAR_WIDTH}px`;
+            gradient.style.height = `${len}px`;
+            gradient.style.background = `linear-gradient(to bottom, ${[...stops]
+                .reverse()
+                .map(([position, color]) => `${color} ${(1 - position) * 100}%`)
+                .join(", ")})`;
+
+            const span = zmax - zmin;
+            ticks.replaceChildren();
+            tickvals.forEach((value, index) => {
+                const fraction = span > 0 ? (value - zmin) / span : 0;
+                if (fraction < 0 || fraction > 1) return;
+                const label = document.createElement("span");
+                label.textContent = ticktext[index];
+                label.style.top = `${(1 - fraction) * len}px`;
+                label.style.left = `${COLORBAR_WIDTH + 6}px`;
+                ticks.appendChild(label);
+            });
+        }
+
+
+        function applyRowHeight(value) {
+            if (!Number.isFinite(value)) {
+                rowHeight = DEFAULT_SETTINGS.rowHeight;
+                document.getElementById("row-height-input").value = rowHeight;
+                updatePlot();
+                setDataStatus("");
+                return false;
+            }
+            rowHeight = Math.round(Math.min(100, Math.max(10, value)));
+            document.getElementById("row-height-input").value = rowHeight;
+            updatePlot();
+            setDataStatus("");
+            return true;
+        }
+
+        function applyMaxCount(value) {
+            if (!Number.isSafeInteger(value) || value < 1) return false;
+            maxCount = value;
+            document.getElementById("max-count-input").value = maxCount;
+            updatePlot();
+            setDataStatus("");
+            return true;
+        }
+
+        function applyTimeRange(startDate, endDate) {
+            activeTimeRange = startDate && endDate ? { startDate, endDate } : null;
+            timeCols = activeTimeRange
+                ? allTimeCols.filter(time => {
+                    const date = time.slice(0, 10);
+                    return date >= activeTimeRange.startDate && date <= activeTimeRange.endDate;
+                })
+                : [...allTimeCols];
+            updatePlot();
+            setDataStatus("");
+        }
+
+        function isValidIsoDate(value) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+            const date = new Date(`${value}T00:00:00Z`);
+            return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+        }
+
+        function updateTopBarPosition() {
+            const root = document.documentElement;
+            document.body.classList.toggle('page-overflow', root.scrollHeight > root.clientHeight);
+        }
+
+        //#endregion
+        //#region Plot interactions
+        const plotResizeObserver = new ResizeObserver(entries => {
+            entries.forEach(entry => {
+                const plot = entry.target;
+                const width = Math.round(entry.contentRect.width);
+                if (plot.layout && plot.layout.width !== width) {
+                    Plotly.relayout(plot, { width });
+                }
+            });
+            updateStickyHeatmapXAxis();
+            updateStickyColorbar();
+            updateTopBarPosition();
+        });
+        plotResizeObserver.observe(document.getElementById('plot'));
+        plotResizeObserver.observe(document.getElementById('bar-plot'));
+        window.addEventListener('resize', updateTopBarPosition);
+        window.addEventListener('resize', updateStickyHeatmapXAxis);
+        window.addEventListener('resize', updateStickyColorbar);
+        window.addEventListener('scroll', updateStickyHeatmapXAxis, { passive: true });
+        window.addEventListener('scroll', updateStickyColorbar, { passive: true });
+
+        const plotElement = document.getElementById('plot');
+        const barPlotElement = document.getElementById('bar-plot');
+        const plotElements = [plotElement, barPlotElement];
+        plotElements.forEach(plot => plot.addEventListener("click", event => {
+            if (event.detail !== 2) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+            const range = getActiveTimeRangeBounds() || getDefaultTimeRangeBounds();
+            if (!range) return;
+            Promise.all(plotElements.map(target =>
+                Plotly.relayout(target, {
+                    "xaxis.autorange": false,
+                    "xaxis.range": range,
+                    "yaxis.autorange": true
+                })
+            )).catch(error => console.error("Failed to restore time range:", error));
+        }, true));
+        let panStart = null;
+        let pendingPanRange = null;
+        let pendingPanPlot = null;
+        let panUpdatePending = false;
+        let panFrame = 0;
+
+        function blockRightButtonGesture(event) {
+            if (event.button !== 2 && !(event.buttons & 2)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+        }
+
+        function blockMiddleButtonMouseGesture(event) {
+            if (event.button !== 1 && !(event.buttons & 4)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+        }
+
+        ["pointerdown", "pointermove", "pointerup", "mousedown", "mousemove", "mouseup"]
+            .forEach(type => document.addEventListener(type, event => {
+                if (plotElements.some(plot => plot.contains(event.target))) {
+                    if (type.startsWith("mouse")) blockMiddleButtonMouseGesture(event);
+                    blockRightButtonGesture(event);
+                }
+            }, true));
+        document.addEventListener("contextmenu", event => {
+            if (!plotElements.some(plot => plot.contains(event.target))) return;
+            event.preventDefault();
+            togglePlotSettingsMenu(event);
+        }, true);
+
+        function flushPanUpdate() {
+            if (panUpdatePending || !pendingPanRange || !pendingPanPlot) return;
+            panUpdatePending = true;
+            const ranges = pendingPanRange;
+            const targetPlot = pendingPanPlot;
+            pendingPanRange = null;
+            pendingPanPlot = null;
+            Plotly.relayout(targetPlot, ranges)
+                .catch(error => console.error("Failed to pan plot:", error))
+                .finally(() => {
+                    panUpdatePending = false;
+                    flushPanUpdate();
+                });
+        }
+
+        plotElements.forEach(plot => {
+            plot.addEventListener('pointerdown', event => {
+                if (event.button !== 1 || !plot._fullLayout) return;
+                const layout = plot._fullLayout;
+                const rect = plot.getBoundingClientRect();
+                const plotX = event.clientX - rect.left;
+                const plotY = event.clientY - rect.top;
+                if (
+                    plotX < layout.margin.l || plotX > rect.width - layout.margin.r ||
+                    plotY < layout.margin.t || plotY > rect.height - layout.margin.b
+                ) return;
+
+                event.preventDefault();
+                panStart = {
+                    plot,
+                    pointerId: event.pointerId,
+                    x: event.clientX,
+                    y: event.clientY,
+                    xRange: [...layout.xaxis.range],
+                    yRange: [...layout.yaxis.range],
+                    xLength: layout.xaxis._length,
+                    yLength: layout.yaxis._length
+                };
+                plot.classList.add('panning');
+                plot.setPointerCapture(event.pointerId);
+            });
+
+            plot.addEventListener('pointermove', event => {
+                if (!panStart || event.pointerId !== panStart.pointerId || panStart.plot !== plot) return;
+                event.preventDefault();
+
+                const xSpan = new Date(panStart.xRange[1]).getTime() - new Date(panStart.xRange[0]).getTime();
+                const xShift = -(event.clientX - panStart.x) / panStart.xLength * xSpan;
+                const ySpan = panStart.yRange[1] - panStart.yRange[0];
+                const yShift = (event.clientY - panStart.y) / panStart.yLength * ySpan;
+                pendingPanRange = {
+                    'xaxis.range': panStart.xRange.map(value =>
+                        new Date(new Date(value).getTime() + xShift).toISOString()
+                    ),
+                    'yaxis.range': panStart.yRange.map(value => value + yShift)
+                };
+                pendingPanPlot = plot;
+
+                if (panFrame) return;
+                panFrame = requestAnimationFrame(() => {
+                    panFrame = 0;
+                    flushPanUpdate();
+                });
+            });
+
+            plot.addEventListener('pointerup', stopPlotPan);
+            plot.addEventListener('pointercancel', stopPlotPan);
+        });
+
+        function stopPlotPan(event) {
+            if (!panStart || event.pointerId !== panStart.pointerId) return;
+            const plot = panStart.plot;
+            panStart = null;
+            plot.classList.remove('panning');
+            if (plot.hasPointerCapture(event.pointerId)) {
+                plot.releasePointerCapture(event.pointerId);
+            }
+        }
+
+        //#endregion
+        //#region Settings menu and PNG export
+        function initializeExplorer() {
+            const plot = document.getElementById("plot");
+            plot.classList.add("empty-state");
+            plot.style.height = "160px";
+            setDropOverlayVisible(true);
+        }
+
+        const menuPopup = document.getElementById("menu-popup");
+        const rowHeightButton = document.querySelector('[data-action="rowheight"]');
+        const rowHeightDialog = document.getElementById("row-height-dialog");
+        const rowHeightInput = document.getElementById("row-height-input");
+        const maxCountDialog = document.getElementById("max-count-dialog");
+        const maxCountInput = document.getElementById("max-count-input");
+        const timeRangeDialog = document.getElementById("time-range-dialog");
+        const timeRangeStartInput = document.getElementById("time-range-start");
+        const timeRangeEndInput = document.getElementById("time-range-end");
+        const timeRangeStartPicker = document.getElementById("time-range-start-picker");
+        const timeRangeEndPicker = document.getElementById("time-range-end-picker");
+        const timeRangePickerButtons = document.querySelectorAll(".date-picker-button");
+        const timeRangeOrderError = "End date must be on or after the start date.";
+        function updateTimeRangeOrderValidity() {
+            if (!isValidIsoDate(timeRangeStartInput.value) || !isValidIsoDate(timeRangeEndInput.value)) {
+                if (timeRangeEndInput.validationMessage === timeRangeOrderError) {
+                    timeRangeEndInput.setCustomValidity("");
+                }
+                return;
+            }
+            timeRangeEndInput.setCustomValidity(
+                timeRangeStartInput.value > timeRangeEndInput.value ? timeRangeOrderError : ""
+            );
+        }
+        function closeSettingsMenu() {
+            menuPopup.classList.remove("open");
+            menuPopup.classList.remove("context-positioned");
+            menuPopup.style.removeProperty("left");
+            menuPopup.style.removeProperty("top");
+        }
+        function openSettingsMenu() {
+            menuPopup.classList.add("open");
+        }
+        function togglePlotSettingsMenu(event) {
+            if (menuPopup.classList.contains("open")) {
+                closeSettingsMenu();
+                return;
+            }
+
+            menuPopup.classList.add("context-positioned");
+            openSettingsMenu();
+            const bounds = menuPopup.getBoundingClientRect();
+            menuPopup.style.left = `${Math.max(8, Math.min(event.clientX, innerWidth - bounds.width - 8))}px`;
+            menuPopup.style.top = `${Math.max(8, Math.min(event.clientY, innerHeight - bounds.height - 8))}px`;
+        }
+        menuPopup.addEventListener("click", event => event.stopPropagation());
+        document.addEventListener("click", closeSettingsMenu);
+        rowHeightButton.addEventListener("click", () => {
+            closeSettingsMenu();
+            rowHeightInput.value = rowHeight;
+            rowHeightDialog.showModal();
+        });
+        document.querySelector('[data-action="maxcount"]').addEventListener("click", () => {
+            closeSettingsMenu();
+            maxCountInput.value = maxCount;
+            maxCountDialog.showModal();
+        });
+        document.querySelector('[data-action="timerange"]').addEventListener("click", () => {
+            closeSettingsMenu();
+            timeRangeStartInput.value = activeTimeRange?.startDate || allTimeCols[0]?.slice(0, 10) || "";
+            timeRangeEndInput.value = activeTimeRange?.endDate || allTimeCols[allTimeCols.length - 1]?.slice(0, 10) || "";
+            timeRangeStartPicker.value = timeRangeStartInput.value;
+            timeRangeEndPicker.value = timeRangeEndInput.value;
+            timeRangeEndInput.setCustomValidity("");
+            timeRangeDialog.showModal();
+        });
+        timeRangePickerButtons.forEach(button => button.addEventListener("click", () => {
+            const picker = document.getElementById(button.dataset.picker);
+            if (picker.showPicker) {
+                picker.showPicker();
+            } else {
+                picker.click();
+            }
+        }));
+        document.getElementById("time-range-cancel").addEventListener("click", () => timeRangeDialog.close());
+        document.getElementById("time-range-clear").addEventListener("click", () => {
+            timeRangeStartInput.value = "";
+            timeRangeEndInput.value = "";
+            timeRangeStartPicker.value = "";
+            timeRangeEndPicker.value = "";
+            timeRangeEndInput.setCustomValidity("");
+            applyTimeRange("", "");
+            timeRangeDialog.close();
+        });
+        [timeRangeStartInput, timeRangeEndInput].forEach(input =>
+            input.addEventListener("input", () => {
+                input.setCustomValidity("");
+                const picker = input === timeRangeStartInput ? timeRangeStartPicker : timeRangeEndPicker;
+                picker.value = isValidIsoDate(input.value) ? input.value : "";
+                updateTimeRangeOrderValidity();
+            })
+        );
+        [[timeRangeStartInput, timeRangeStartPicker], [timeRangeEndInput, timeRangeEndPicker]]
+            .forEach(([input, picker]) => picker.addEventListener("input", () => {
+                input.value = picker.value;
+                input.setCustomValidity("");
+                updateTimeRangeOrderValidity();
+            }));
+        document.getElementById("time-range-form").addEventListener("submit", event => {
+            event.preventDefault();
+            timeRangeStartInput.setCustomValidity("");
+            timeRangeEndInput.setCustomValidity("");
+            if (!isValidIsoDate(timeRangeStartInput.value)) {
+                timeRangeStartInput.setCustomValidity("Enter a valid date as yyyy-mm-dd.");
+                timeRangeStartInput.reportValidity();
+                return;
+            }
+            if (!isValidIsoDate(timeRangeEndInput.value)) {
+                timeRangeEndInput.setCustomValidity("Enter a valid date as yyyy-mm-dd.");
+                timeRangeEndInput.reportValidity();
+                return;
+            }
+            if (timeRangeStartInput.value > timeRangeEndInput.value) {
+                timeRangeEndInput.setCustomValidity(timeRangeOrderError);
+                timeRangeEndInput.reportValidity();
+                return;
+            }
+            applyTimeRange(timeRangeStartInput.value, timeRangeEndInput.value);
+            timeRangeDialog.close();
+        });
+        document.getElementById("max-count-cancel").addEventListener("click", () => maxCountDialog.close());
+        document.getElementById("max-count-form").addEventListener("submit", event => {
+            event.preventDefault();
+            if (applyMaxCount(Number(maxCountInput.value))) maxCountDialog.close();
+            else maxCountInput.reportValidity();
+        });
+        document.getElementById("row-height-cancel").addEventListener("click", () => rowHeightDialog.close());
+        document.getElementById("row-height-form").addEventListener("submit", event => {
+            event.preventDefault();
+            applyRowHeight(Number(rowHeightInput.value));
+            rowHeightDialog.close();
+        });
+        document.querySelector('[data-action="colormap"]').addEventListener("click", () => {
+            closeSettingsMenu();
+            currentColorScaleIndex = (currentColorScaleIndex + 1) % colorScales.length;
+            currentColorScale = colorScales[currentColorScaleIndex];
+            updatePlot();
+        });
+        document.querySelector('[data-action="labelformat"]').addEventListener("click", () => {
+            closeSettingsMenu();
+            labelFormatCompact = !labelFormatCompact;
+            updatePlot();
+        });
+        document.querySelector('[data-action="csv"]').addEventListener("click", () => {
+            closeSettingsMenu();
+            if (!currentHeatmapCsvData) {
+                setDataStatus("There is no heatmap data to export.", true);
+                return;
+            }
+
+            try {
+                const escapeCsv = value => {
+                    const text = String(value);
+                    return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+                };
+                const csv = [
+                    [...currentHeatmapCsvData.keyHeaders, ...currentHeatmapCsvData.headers],
+                    ...currentHeatmapCsvData.rows.map(([keyValues, counts]) => [...keyValues, ...counts])
+                ].map(row => row.map(escapeCsv).join(",")).join("\r\n");
+                const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = `${exportBaseName()}.csv`;
+                link.click();
+                setTimeout(() => URL.revokeObjectURL(url), 0);
+                setDataStatus("");
+            } catch (error) {
+                console.error("Failed to export heatmap as CSV:", error);
+                setDataStatus(`Could not export CSV: ${error.message || error}`, true);
+            }
+        });
+        document.querySelector('[data-action="png"]').addEventListener("click", async () => {
+            closeSettingsMenu();
+            try {
+                const images = await Promise.all(plotElements.map(async plot => {
+                    const showBar = plot === plotElement && plotInitialized;
+                    if (showBar) await Plotly.restyle(plot, { showscale: true }, [0]);
+                    let source;
+                    try {
+                        source = await Plotly.toImage(plot, { format: "png" });
+                    } finally {
+                        if (showBar) await Plotly.restyle(plot, { showscale: false }, [0]);
+                    }
+                    return new Promise((resolve, reject) => {
+                        const image = new Image();
+                        image.onload = () => resolve(image);
+                        image.onerror = reject;
+                        image.src = source;
+                    });
+                }));
+                const canvas = document.createElement("canvas");
+                canvas.width = Math.max(...images.map(image => image.naturalWidth));
+                const context = canvas.getContext("2d");
+                if (!context) throw new Error("Could not create an image canvas.");
+                const padding = 16;
+                const textWidth = canvas.width - padding * 2;
+                const wrapText = (text, maxWidth) => {
+                    const lines = [];
+                    String(text).split(/\s+/).forEach(word => {
+                        let remaining = word;
+                        while (remaining && context.measureText(remaining).width > maxWidth) {
+                            let splitAt = 1;
+                            while (splitAt < remaining.length &&
+                                context.measureText(remaining.slice(0, splitAt + 1)).width <= maxWidth) {
+                                splitAt++;
+                            }
+                            lines.push(remaining.slice(0, splitAt));
+                            remaining = remaining.slice(splitAt);
+                        }
+                        if (!remaining) return;
+                        const currentLine = lines[lines.length - 1];
+                        if (currentLine && !currentLine.endsWith(" ") &&
+                            context.measureText(`${currentLine} ${remaining}`).width <= maxWidth) {
+                            lines[lines.length - 1] = `${currentLine} ${remaining}`;
+                        } else {
+                            lines.push(remaining);
+                        }
+                    });
+                    return lines.length ? lines : [""];
+                };
+                const title = document.getElementById("plot-heading").textContent;
+                context.font = "19.2px 'Segoe UI', sans-serif";
+                const titleLines = wrapText(title, textWidth);
+                const titleLineHeight = 24;
+                const filterParts = fields.map(field => {
+                    const selected = [...activeFilters[field]];
+                    const optionCount = filterDrops.get(field)
+                        .querySelectorAll('.dropdown-content input[type="checkbox"]').length;
+                    const filterValue = selected.length && selected.length < optionCount
+                        ? selected.join(", ")
+                        : "All";
+                    return `${field} - ${filterValue}`;
+                });
+                const filtersText = `Filters:  ${filterParts.join(";  ")}`;
+                const splitFields = [...document.querySelectorAll(".split-field:checked")]
+                    .map(input => input.value);
+                const splitSegments = [{ text: "Split by:  ", color: "#ccc" }];
+                splitFields.forEach((field, index) => {
+                    if (index) splitSegments.push({ text: ", ", color: "#ccc" });
+                    splitSegments.push({ text: field, color: fieldColors.get(field) || "#ccc" });
+                });
+                if (!splitFields.length) splitSegments.push({ text: "None", color: "#ccc" });
+                const totalText = `${document.getElementById("total-value").textContent}  ${document.getElementById("peak-count").textContent}`;
+                context.font = "12px 'Segoe UI', sans-serif";
+                const settingsRows = [];
+                const addPlainRows = text => wrapText(text, textWidth)
+                    .forEach(line => settingsRows.push([{ text: line, color: "#ccc" }]));
+                addPlainRows(filtersText);
+                settingsRows.push(splitSegments);
+                addPlainRows(totalText);
+                if (activeTimeRange) {
+                    addPlainRows(`Time range:  ${activeTimeRange.startDate} through ${activeTimeRange.endDate} (inclusive)`);
+                }
+                const settingsLineHeight = 17;
+                const settingsHeight = settingsRows.length * settingsLineHeight;
+                const titleTop = padding + settingsHeight + padding / 2;
+                const titleHeight = titleTop + titleLines.length * titleLineHeight + padding;
+                canvas.height = images.reduce((height, image) => height + image.naturalHeight, titleHeight);
+                context.fillStyle = "#141414";
+                context.fillRect(0, 0, canvas.width, canvas.height);
+                context.fillStyle = "#ccc";
+                context.font = "12px 'Segoe UI', sans-serif";
+                context.textAlign = "left";
+                context.textBaseline = "top";
+                settingsRows.forEach((segments, rowIndex) => {
+                    let x = padding;
+                    const y = padding + rowIndex * settingsLineHeight;
+                    segments.forEach(({ text, color }) => {
+                        context.fillStyle = color;
+                        context.fillText(text, x, y);
+                        x += context.measureText(text).width;
+                    });
+                });
+                context.fillStyle = "white";
+                context.font = "19.2px 'Segoe UI', sans-serif";
+                context.textAlign = "center";
+                titleLines.forEach((line, index) => {
+                    context.fillText(line, canvas.width / 2, titleTop + index * titleLineHeight, textWidth);
+                });
+                let top = titleHeight;
+                images.forEach(image => {
+                    context.drawImage(image, 0, top);
+                    top += image.naturalHeight;
+                });
+                const link = document.createElement("a");
+                link.download = `${exportBaseName()}.png`;
+                link.href = canvas.toDataURL("image/png");
+                link.click();
+            } catch (error) {
+                console.error("Failed to export plot as PNG:", error);
+                setDataStatus(`Could not export PNG: ${error.message}`, true);
+            }
+        });
+
+        initializeExplorer();
+        //#endregion
+    </script>
+</body>
+</html>
